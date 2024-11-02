@@ -11,6 +11,7 @@ class DebugWindow(tk.Toplevel):
             self.resizable(True, True)  # Allow resizing
             self.create_widgets()
             self.protocol("WM_DELETE_WINDOW", self.on_close)
+            self.running = True  # Added flag to indicate the window is running
             self.periodic_update()  # Add periodic update
         except Exception as e:
             logging.error(f"Error initializing DebugWindow: {e}")
@@ -33,14 +34,18 @@ class DebugWindow(tk.Toplevel):
 
     def on_close(self):
         try:
+            self.running = False  # Set flag to False when closing the window
             self.destroy()
             self.master.debug_window = None  # Reset the reference in master
         except Exception as e:
             logging.error(f"Error closing DebugWindow: {e}")
 
     def periodic_update(self):
+        if not self.running:
+            return  # Exit if the window is no longer running
         try:
-            # Optionally, fetch logs from a log handler and display them
+            # Example: Fetch recent logs from a queue or handler
+            # This requires setting up a logging handler that shares logs with DebugWindow
             self.update_idletasks()
             self.after(50, self.periodic_update)  # Schedule the next update
         except Exception as e:

@@ -5,8 +5,8 @@ def setup_logging():
     logging.basicConfig(
         filename='app.log',
         filemode='a',
-        format='%(Y)s-%(m)s-%(d)s %H:%M:%S,%f - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S,%f',
+        format='%(asctime)s - %(levelname)s - %(message)s',  # Corrected format
+        datefmt='%Y-%m-%d %H:%M:%S,%f',  # Removed unsupported %f from asctime, using milliseconds instead
         level=logging.INFO
     )
     logging.info("Starting Voice Control App")

@@ -9,18 +9,27 @@ from audio.device_manager import list_input_devices
 from audio.visualizer import AudioVisualizer
 from ui.input_devices import InputDevicesWindow
 from audio.voice_recognition import voice_recognition, stop_voice_recognition
-import base64  # Add import for base64
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        # Initialize critical attributes early
+        self.running = True  # Flag to indicate the application is running
+        self.voice_recognition_thread = None
+        self.visualizer_running = False  # Flag to track visualizer state
+        self.device_settings_window = None  # Reference to DeviceSettings window
+        self.input_devices_window = None  # Reference to InputDevicesWindow
+        self.debug_window = None  # Reference to DebugWindow (if applicable)
+        self.visualizer = None  # Initialize visualizer reference
+        self.visualizer_frame = None  # Store reference for later use
+
         try:
             self.settings = load_settings()
             logging.debug(f"Loaded settings: {self.settings}")
             self.title("Voice Shortcut Controller")
             self.geometry("800x600")  # Resize the window
             self.resizable(True, True)  # Allow resizing
-            self.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
+            self.protocol("WM_DELETE_WINDOW", self.on_closing)  # Bind the closing protocol
             self.language_display_mapping = {  # Added as an instance variable
                 "": "Auto (Default)",
                 "en-US": "English (United States)",
@@ -39,19 +48,18 @@ class App(tk.Tk):
                 language_code, "English (United States)"
             )
             logging.debug(f"Language display: {self.settings['language_display']}")
-            self.visualizer_running = False  # Flag to track visualizer state
-            self.device_settings_window = None  # Reference to DeviceSettings window
-            self.input_devices_window = None  # Reference to InputDevicesWindow
-            self.debug_window = None  # Reference to DebugWindow (if applicable)
             self.create_widgets()
-            # Temporarily disable system tray to test GUI startup
-            # setup_tray()
+            setup_tray(self)  # Enable system tray
             self.periodic_update()  # Add periodic update
-            self.voice_recognition_thread = None
             self.start_voice_recognition()  # Start voice recognition
             logging.info("Application UI initialized.")
         except Exception as e:
             logging.error(f"Error during App initialization: {e}")
+
+    def on_closing(self):
+        """Handle the application closing event."""
+        self.running = False  # Set flag to False when closing the application
+        self.destroy()
 
     def start_voice_recognition(self):
         try:
@@ -215,6 +223,11 @@ class App(tk.Tk):
         required_keyword_entry.grid(row=1, column=1, sticky='ew')
         enable_shortcuts_frame.columnconfigure(1, weight=1)
 
+        # Add Audio Visualizer Frame
+        visualizer_frame = ttk.LabelFrame(main_frame, text="Audio Visualizer", padding="10")
+        visualizer_frame.pack(fill='both', expand=True, pady=10)
+        self.visualizer_frame = visualizer_frame  # Store reference for later use
+
     def validate_audio_lengths(self, *args):
         min_val = self.min_length_var.get()
         max_val = self.max_length_var.get()
@@ -299,10 +312,9 @@ class App(tk.Tk):
                 if command in self.settings["shortcuts"]:
                     del self.settings["shortcuts"][command]
                     self.shortcuts_listbox.delete(selected)
-                    save_settings(self.settings)
                     logging.info(f"Removed shortcut: {command}")
                 else:
-                    logging.error(f"Command '{command}' not found in settings.")
+                    logging.warning(f"Shortcut '{command}' not found in settings.")
             except ValueError:
                 logging.error("Invalid shortcut format selected.")
         else:
@@ -330,16 +342,23 @@ class App(tk.Tk):
             return  # Prevent starting another instance
         self.visualizer_running = True  # Set the flag
         self.visualizer_button.config(state='disabled')  # Disable the button
-        threading.Thread(target=self._start_visualizer, daemon=True).start()
-    
-    def _start_visualizer(self):
+
+        # Initialize and start the visualizer embedded in the dedicated frame
         try:
-            visualizer = AudioVisualizer(device_name=self.device_var.get(), processing_backend=self.processing_var.get())
-            visualizer.start()
+            if not self.visualizer:
+                visualizer_frame = self.visualizer_frame  # Use stored reference
+                self.visualizer = AudioVisualizer(
+                    parent=visualizer_frame,
+                    device_name=self.device_var.get(),
+                    processing_backend=self.processing_var.get(),
+                    chunk=1024  # Ensure chunk size matches the plot initialization
+                )
+                logging.info("AudioVisualizer started and embedded.")
+            else:
+                logging.info("AudioVisualizer is already initialized.")
         except Exception as e:
             logging.error(f"Error starting visualizer: {e}")
-        finally:
-            self.visualizer_running = False  # Reset the flag
+            self.visualizer_running = False
             self.visualizer_button.config(state='normal')  # Re-enable the button
 
     def minimize_to_tray(self):
@@ -353,6 +372,7 @@ class App(tk.Tk):
             save_settings(self.settings)
             self.current_language_label.config(text=language_display)
             logging.info("Settings updated via UI.")
+            self.running = False  # Set flag to False when minimizing to tray
         except Exception as e:
             logging.error(f"Error minimizing to tray: {e}")
 
@@ -371,6 +391,8 @@ class App(tk.Tk):
             self.input_devices_window = None
 
     def periodic_update(self):
+        if not self.running:
+            return  # Exit if the application is no longer running
         try:
             self.update_idletasks()
             self.after(50, self.periodic_update)  # Schedule the next update
@@ -475,6 +497,7 @@ class App(tk.Tk):
                 "[ctrl]",
                 "[shift]",
                 "[alt]",
+                "[win]",
                 "[ctrl] + [c]",
                 "[ctrl] + [v]",
                 "[ctrl] + [s]",
@@ -484,7 +507,6 @@ class App(tk.Tk):
                 "<goodbye>",
                 "[ctrl] + [a]",
                 "[ctrl] + [z]"
-                # Add more predefined or common shortcuts as needed
             ]
 
         def show_autocomplete_menu(self, suggestions):
@@ -493,12 +515,8 @@ class App(tk.Tk):
                 self.autocomplete_menu = tk.Menu(self, tearoff=0)
             else:
                 self.autocomplete_menu.delete(0, tk.END)
-
             for suggestion in suggestions:
-                self.autocomplete_menu.add_command(
-                    label=suggestion,
-                    command=lambda s=suggestion: self.select_autocomplete(s)
-                )
+                self.autocomplete_menu.add_command(label=suggestion, command=lambda s=suggestion: self.select_autocomplete(s))
 
             # Get the position of the execute_entry
             x = self.execute_entry.winfo_rootx()
@@ -525,18 +543,15 @@ class App(tk.Tk):
             require_word = self.require_word_var.get().strip()
 
             if not command or not execute:
-                logging.warning("Both Voice Command and Keyboard Shortcut are required.")
-                tk.messagebox.showwarning("Input Error", "Both Voice Command and Keyboard Shortcut are required.")
+                logging.warning("Command and execution fields cannot be empty.")
                 return
 
             if self.command and self.command != command:
-                # If editing and the command has changed, remove the old command
-                if self.command in self.master.settings.get("shortcuts", {}):
-                    del self.master.settings["shortcuts"][self.command]
+                logging.warning("Cannot change the command of an existing shortcut.")
+                return
 
-            if command in self.master.settings.get("shortcuts", {}):
-                logging.warning(f"Command '{command}' already exists.")
-                tk.messagebox.showwarning("Duplicate Command", f"Command '{command}' already exists.")
+            if command in self.master.settings.get("shortcuts", {}) and not self.command:
+                logging.warning(f"Shortcut '{command}' already exists.")
                 return
 
             # Add or update the shortcut in settings

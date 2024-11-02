@@ -27,5 +27,8 @@ def get_device_sample_rate(device_index):
         return sample_rate
     except Exception as e:
         logging.error(f"Error retrieving sample rate for device {device_index}: {e}")
-        p.terminate()
+        try:
+            p.terminate()
+        except:
+            pass
         return 44100  # Fallback to a common sample rate

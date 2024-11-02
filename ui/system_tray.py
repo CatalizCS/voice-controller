@@ -1,51 +1,35 @@
-import pystray
-from PIL import Image, ImageDraw
-import tkinter as tk
-import threading
 import logging
+import threading
+import tkinter as tk
+from PIL import Image, ImageTk
+import pystray
+from pystray import MenuItem as item
 
-def create_image():
+def setup_tray(app):
     try:
-        # Create an image with a simple icon
-        image = Image.new('RGB', (64, 64), (255, 255, 255))
-        dc = ImageDraw.Draw(image)
-        dc.rectangle((0, 0, 64, 64), fill=(0, 0, 0))
-        return image
-    except Exception as e:
-        logging.error(f"Error creating system tray image: {e}")
-        return None
-
-def on_quit(icon, item):
-    try:
-        icon.stop()
-        if tk._default_root:
-            tk._default_root.quit()
-    except Exception as e:
-        logging.error(f"Error quitting application from system tray: {e}")
-
-def show_window(icon, item):
-    try:
-        if tk._default_root:
-            tk._default_root.after(0, tk._default_root.deiconify)
-    except Exception as e:
-        logging.error(f"Error showing window from system tray: {e}")
-
-def setup_tray():
-    try:
-        def run_tray():
-            try:
-                icon = pystray.Icon("Voice Shortcut Controller")
-                icon.icon = create_image()
-                if icon.icon is None:
-                    logging.error("Failed to create system tray icon.")
-                    return
-                icon.menu = pystray.Menu(
-                    pystray.MenuItem("Show", show_window),
-                    pystray.MenuItem("Quit", on_quit)
-                )
-                icon.run_detached()
-            except Exception as e:
-                logging.error(f"Error in system tray thread: {e}")
-        threading.Thread(target=run_tray, daemon=True).start()
+        # Load the icon image (ensure 'icon.png' exists in the appropriate directory)
+        image = Image.open("icon.png")  # Replace with the path to your icon file
+        menu = (
+            item('Show', lambda: show_app(app)),
+            item('Exit', lambda: exit_app(app))
+        )
+        tray_icon = pystray.Icon("voice-controller", image, "Voice Shortcut Controller", menu)
+        threading.Thread(target=tray_icon.run, daemon=True).start()
+        logging.info("System tray icon created.")
     except Exception as e:
         logging.error(f"Error setting up system tray: {e}")
+
+def show_app(app):
+    if app.winfo_exists():
+        app.deiconify()
+        app.lift()
+        logging.info("Application window restored from system tray.")
+    else:
+        logging.warning("Attempted to show app, but it no longer exists.")
+
+def exit_app(app):
+    if app.winfo_exists():
+        app.destroy()
+        logging.info("Application exited from system tray.")
+    else:
+        logging.warning("Application already destroyed. Cannot exit again.")

@@ -5,7 +5,7 @@ import pyaudio
 import wave
 from audio.device_manager import list_input_devices, get_device_sample_rate
 import threading
-import numpy as np  # Add import for NumPy
+import numpy as np  # Ensure NumPy is imported for audio processing
 
 class DeviceSettings(tk.Toplevel):
     def __init__(self, master, settings):
@@ -19,6 +19,7 @@ class DeviceSettings(tk.Toplevel):
             self.create_widgets()
             self.create_device_list_button()
             self.testing_device = False  # Flag to track testing state
+            self.running = True  # Added flag to indicate the window is running
             self.periodic_update()  # Add periodic update
         except Exception as e:
             logging.error(f"Error initializing DeviceSettings: {e}")
@@ -165,7 +166,7 @@ class DeviceSettings(tk.Toplevel):
 
                     wf = wave.open("test.wav", 'wb')
                     wf.setnchannels(channels)  # Ensure the number of channels is consistent
-                    wf.setsampwidth(pyaudio.PyAudio().get_sample_size(pyaudio.paInt16))
+                    wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
                     wf.setframerate(sample_rate)
                     wf.writeframes(normalized_data.tobytes())
                     wf.close()
@@ -200,6 +201,10 @@ class DeviceSettings(tk.Toplevel):
             
             # Set 'language_display' to the selected display name
             self.settings["language_display"] = selected_language_display
+
+            # Save preferred languages
+            preferred_languages = [code for code, var in self.preferred_languages_vars.items() if var.get()]
+            self.settings["preferred_languages"] = preferred_languages
             
             # Save settings and update the main application
             self.master.save_settings()
@@ -210,6 +215,8 @@ class DeviceSettings(tk.Toplevel):
             logging.error(f"Error saving settings: {e}")
 
     def periodic_update(self):
+        if not self.running:
+            return  # Exit if the window is no longer running
         try:
             self.update_idletasks()
             self.after(50, self.periodic_update)  # Schedule the next update
@@ -224,5 +231,12 @@ class DeviceSettings(tk.Toplevel):
     def update_language_display(self):
         try:
             language_display = self.settings.get("language_display", "English (United States)")
+            # If there's a label or UI element to show the language, update it here
+            # For example:
+            # self.language_label.config(text=language_display)
         except Exception as e:
             logging.error(f"Error updating language display: {e}")
+
+    def on_close(self):
+        self.running = False  # Set flag to False when closing the window
+        self.destroy()
