@@ -8,7 +8,7 @@ from pystray import MenuItem as item
 def setup_tray(app):
     try:
         # Load the icon image (ensure 'icon.png' exists in the appropriate directory)
-        image = Image.open("icon.png")  # Replace with the path to your icon file
+        image = Image.open("icon.png")
         menu = (
             item('Show', lambda: show_app(app)),
             item('Exit', lambda: exit_app(app))
